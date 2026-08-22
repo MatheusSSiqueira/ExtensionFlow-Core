@@ -18,10 +18,7 @@ app.add_middleware(
 
 @app.get("/")
 def health_check():
-    """
-    Endpoint de verificação de saúde da API.
-    Não expõe lógicas de agentes, apenas confirma que o servidor está no ar.
-    """
+    #Endpoint de verificação de saúde da API.
     return {
         "status": "online", 
         "message": "API do ExtensionFlow rodando. Pronta para validações acadêmicas."
