@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.api.compliance import router as compliance_router # NOVO: Importa a rota
 
 app = FastAPI(
     title="ExtensionFlow API",
@@ -7,19 +8,17 @@ app = FastAPI(
     version="2.0.0",
 )
 
-# Configuração de CORS (Segurança): Permite que o frontend converse com a API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Em produção, mudaremos isso para a URL do seu frontend
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+#Conecta a rota na aplicação com um prefixo limpo
+app.include_router(compliance_router, prefix="/api/v1/compliance", tags=["Compliance"])
+
 @app.get("/")
 def health_check():
-    #Endpoint de verificação de saúde da API.
-    return {
-        "status": "online", 
-        "message": "API do ExtensionFlow rodando. Pronta para validações acadêmicas."
-    }
+    return {"status": "online", "message": "API do ExtensionFlow rodando. Pronta para validações acadêmicas."}
