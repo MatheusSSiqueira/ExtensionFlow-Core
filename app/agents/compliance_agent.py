@@ -1,11 +1,30 @@
+"""Agente de conformidade que utiliza o modelo Gemini para avaliar atividades.
+
+Esta função consulta o LLM com um prompt estruturado e pede uma resposta
+no formato do `ComplianceChecklist`. A função devolve um dicionário
+que pode ser usado para construir o modelo Pydantic correspondente.
+"""
+
 import google.generativeai as genai
 from app.core.llm import get_gemini_model
 from app.schemas.compliance import ComplianceChecklist
 import json
 
+
 def analyze_compliance_with_gemini(activity_description: str, regulation_context: str) -> dict:
+    """Avalia a conformidade de uma atividade com base em um regulamento.
+
+    Args:
+        activity_description: Texto descritivo da atividade do aluno.
+        regulation_context: Trechos relevantes do regulamento (contexto RAG).
+
+    Returns:
+        Um dicionário compatível com o schema `ComplianceChecklist`.
+    """
+
+    # Instancia o modelo Gemini (camada de abstração em app.core.llm)
     model = get_gemini_model()
-    
+
     prompt = f"""
     Você é um auditor rigoroso de atividades acadêmicas. Sua função é avaliar a atividade do aluno com base ÚNICA e EXCLUSIVAMENTE no regulamento fornecido.
     
@@ -29,5 +48,6 @@ def analyze_compliance_with_gemini(activity_description: str, regulation_context
             response_schema=ComplianceChecklist, 
         ),
     )
-    
+
+    # O SDK retorna um texto JSON; convertendo para dicionário Python
     return json.loads(response.text)

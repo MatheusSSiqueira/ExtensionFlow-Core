@@ -1,8 +1,14 @@
+"""Ponto de entrada da aplicação FastAPI.
+
+Serve a API REST e os arquivos estáticos do frontend.
+"""
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from app.api.compliance import router as compliance_router
+
 
 app = FastAPI(
     title="ExtensionFlow API",

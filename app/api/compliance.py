@@ -7,17 +7,15 @@ router = APIRouter()
 
 @router.post("/validate", response_model=ComplianceChecklist)
 def validate_activity_endpoint(request: ComplianceRequest):
-    # Busca a regra no banco de dados ChromaDB
+    # Recupera trechos relevantes do regulamento usando o RAG (ChromaDB)
     relevant_context = vector_db.search(query_text=request.activity_description)
-    
-    # ---------------------------------------------------------
-    # Imprime no terminal o que o ChromaDB encontrou!
-    print("\n--- INÍCIO DO CONTEXTO ENCONTRADO NO RAG ---")
+
+    # Log para desenvolvimento: mostra o contexto usado na consulta ao LLM
+    print("\n--- CONTEXTO RECUPERADO PELO RAG ---")
     print(relevant_context)
     print("--- FIM DO CONTEXTO ---\n")
-    # ---------------------------------------------------------
-    
-    # Envia a atividade e a regra para o Gemini
+
+    # Chama o agente que interage com o Gemini, fornecendo atividade e contexto
     result_dict = analyze_compliance_with_gemini(
         activity_description=request.activity_description,
         regulation_context=relevant_context
