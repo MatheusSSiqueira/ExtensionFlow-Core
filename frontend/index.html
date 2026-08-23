@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ExtensionFlow | Validador Acadêmico</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>ExtensionFlow</h1>
+            <p>Valide suas atividades de extensão instantaneamente.</p>
+        </header>
+
+        <main>
+            <div class="card">
+                <h2>O que você planeja fazer?</h2>
+                <p class="subtitle">Descreva a atividade e quais documentos você possui (ex: certificado, link, declaração).</p>
+                
+                <textarea id="activityInput" placeholder="Ex: Participei de um hackathon no fim de semana passado e tenho o link do repositório oficial..."></textarea>
+                
+                <button id="validateBtn" onclick="validateActivity()">Verificar Conformidade</button>
+                
+                <!-- Aqui aparecerá o estado de carregamento -->
+                <div id="loading" class="hidden">
+                    <span class="spinner"></span> Analisando o regulamento...
+                </div>
+            </div>
+
+            <!-- Aqui aparecerá o resultado da IA -->
+            <div id="resultCard" class="card hidden">
+                <div id="statusBadge" class="badge"></div>
+                <h3 id="statusMessage"></h3>
+                
+                <div class="reasoning-box">
+                    <strong>Análise do Sistema:</strong>
+                    <p id="reasoningText"></p>
+                </div>
+
+                <div id="missingItemsContainer" class="hidden">
+                    <strong>Itens Pendentes:</strong>
+                    <ul id="missingItemsList"></ul>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="/static/app.js"></script>
+</body>
+</html>

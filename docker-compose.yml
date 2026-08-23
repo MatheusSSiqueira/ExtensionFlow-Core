@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    container_name: extensionflow_api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      # Isso garante que o banco vetorial fique salvo no HD e não suma
+      - ./data/chroma_db:/app/data/chroma_db
+    restart: unless-stopped

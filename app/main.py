@@ -1,10 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.compliance import router as compliance_router # NOVO: Importa a rota
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from app.api.compliance import router as compliance_router
 
 app = FastAPI(
     title="ExtensionFlow API",
-    description="API para o assistente multiagente de atividades acadêmicas da Unicesumar",
+    description="API para o assistente multiagente de atividades acadêmicas",
     version="2.0.0",
 )
 
@@ -16,9 +18,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-#Conecta a rota na aplicação com um prefixo limpo
 app.include_router(compliance_router, prefix="/api/v1/compliance", tags=["Compliance"])
 
+# Monta a pasta do frontend para servir os arquivos estáticos (CSS, JS)
+app.mount("/static", StaticFiles(directory="frontend"), name="static")
+
+# Rota principal para a interface visual (HTML)
 @app.get("/")
-def health_check():
-    return {"status": "online", "message": "API do ExtensionFlow rodando. Pronta para validações acadêmicas."}
+def serve_frontend():
+    return FileResponse("frontend/index.html")
