@@ -1,43 +1,42 @@
 import os
+from app.rag.loaders import extract_document_text
+from app.rag.splitter import split_text_with_metadata
 from app.rag.vector_store import vector_db
 
-def load_and_index_documents():
-    """
-    Pipeline oficial de ingestão.
-    Lê todos os arquivos de texto do diretório e os envia para o banco vetorial.
-    """
-    docs_dir = "data/raw_docs"
-    
-    # Verifica se a pasta existe
-    if not os.path.exists(docs_dir):
-        print(f"Diretório '{docs_dir}' não encontrado. Crie a pasta e adicione os regulamentos.")
+RAW_DOCS_DIR = os.path.join(os.getcwd(), "data", "raw_docs")
+
+def build_vector_database():
+    """Varrer diretório de dados brutos recursivamente e ingerir todos os documentos suportados."""
+    if not os.path.exists(RAW_DOCS_DIR):
+        print(f"Diretório {RAW_DOCS_DIR} não encontrado.")
         return
 
-    arquivos_encontrados = [f for f in os.listdir(docs_dir) if f.endswith(".txt")]
+    print("=== Iniciando Ingestão de Documentos ===")
+    arquivos_processados = 0
     
-    if not arquivos_encontrados:
-        print("Nenhum documento .txt encontrado para ingestão.")
-        return
-
-    for filename in arquivos_encontrados:
-        file_path = os.path.join(docs_dir, filename)
-        
-        # 1. Lê o documento de forma genérica
-        with open(file_path, "r", encoding="utf-8") as f:
-            content = f.read()
+    # os.walk permite ler arquivos dentro de subpastas
+    for root, _, files in os.walk(RAW_DOCS_DIR):
+        for filename in files:
+            file_path = os.path.join(root, filename)
             
-        # 2. Divide em chunks
-        chunks = [chunk.strip() for chunk in content.split("\n\n") if chunk.strip()]
-        
-        # 3. Cria IDs e Metadados dinâmicos baseados no nome do arquivo 
-        ids = [f"{filename.replace('.txt', '')}_{i}" for i in range(len(chunks))]
-        metadatas = [{"source": filename} for _ in chunks]
-        
-        # 4. Salva no ChromaDB
-        print(f"Vetorizando {len(chunks)} regras do documento: {filename}...")
-        vector_db.add_chunks(chunks, metadatas, ids)
-        
-    print("Processo de indexação concluído com sucesso!")
+            # Ignora arquivos de sistema ou ocultos
+            if filename.startswith('.'):
+                continue
+                
+            print(f"Lendo: {filename}...")
+            text_content = extract_document_text(file_path)
+            
+            if not text_content:
+                continue
+                
+            # Divide e injeta metadados
+            chunks, metadatas, ids = split_text_with_metadata(text_content, filename)
+            
+            # Salva no banco (O hash evita criar clones)
+            vector_db.add_documents(chunks, metadatas, ids)
+            arquivos_processados += 1
+            
+    print(f"=== Processo de Ingestão Concluído. {arquivos_processados} arquivos processados. ===")
 
 if __name__ == "__main__":
-    load_and_index_documents()
+    build_vector_database()

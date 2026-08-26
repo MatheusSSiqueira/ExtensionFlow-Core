@@ -1,76 +1,52 @@
-"""Camada de persistência e busca vetorial usando ChromaDB + Gemini Embeddings.
-
-Este módulo encapsula a criação de embeddings via Gemini e oferece uma
-classe simples para armazenar e buscar trechos de regulamentos.
-"""
-
 import os
 import chromadb
-import google.generativeai as genai
-from chromadb.api.types import Documents, EmbeddingFunction, Embeddings
-from app.core.config import settings
+from typing import List, Dict, Any
 
-# Inicializa a chave para geração de embeddings (Gemini)
-genai.configure(api_key=settings.gemini_api_key)
+# Estratégia de Persistência "Baked-in" para o Cloud Run
+DB_DIR = os.path.join(os.getcwd(), "data", "chroma_db")
 
-
-class GeminiEmbeddingFunction(EmbeddingFunction):
-    """Adaptador que converte textos em embeddings usando o Gemini.
-
-    Implementa a interface exigida pelo ChromaDB para funções de embedding.
-    """
-
-    def __call__(self, input: Documents) -> Embeddings:
-        result = genai.embed_content(
-            model="models/gemini-embedding-2",
-            content=input,
-            task_type="retrieval_document"
-        )
-        return result['embedding']
-
-
-class DocumentStore:
-    def __init__(self, persist_directory: str = "data/chroma_db"):
-        """Inicializa o cliente ChromaDB e prepara a collection usada pela aplicação.
-
-        Args:
-            persist_directory: Pasta onde o banco persistente será armazenado.
-        """
-        os.makedirs(persist_directory, exist_ok=True)
-
-        # Cliente persistente para garantir que embeddings e metadados fiquem no disco
-        self.client = chromadb.PersistentClient(path=persist_directory)
-        self.embedding_function = GeminiEmbeddingFunction()
-
-        # Cria ou carrega a coleção onde serão guardados os regulamentos
+class ChromaVectorStore:
+    def __init__(self, collection_name: str = "extension_rules"):
+        # Garante que o diretório exista
+        os.makedirs(DB_DIR, exist_ok=True)
+        
+        # Inicia o cliente persistente na pasta definida
+        self.client = chromadb.PersistentClient(path=DB_DIR)
+        
+        # Cria ou obtém a coleção 
         self.collection = self.client.get_or_create_collection(
-            name="unicesumar_regulations",
-            embedding_function=self.embedding_function
+            name=collection_name,
+            metadata={"hnsw:space": "cosine"} # Métrica recomendada para similaridade semântica
         )
 
-    def add_chunks(self, chunks: list[str], metadatas: list[dict], ids: list[str]):
-        """Insere ou atualiza documentos (pedaços de regulamento) na coleção."""
-        self.collection.upsert(
+    def add_documents(self, chunks: List[str], metadatas: List[Dict[str, Any]], ids: List[str]):
+        """Insere os blocos de texto no banco vetorial."""
+        if not chunks:
+            return
+        
+        # O ChromaDB cuida da criação de embeddings internamente (Default Embedding Function)
+        self.collection.add(
             documents=chunks,
             metadatas=metadatas,
             ids=ids
         )
+        print(f"[{len(chunks)}] blocos indexados no ChromaDB.")
 
-    def search(self, query_text: str, n_results: int = 3) -> str:
-        """Busca os trechos mais relevantes para uma consulta.
-
-        Retorna uma string com os trechos encontrados separados por duas quebras
-        de linha, adequada para ser enviada ao LLM como contexto.
-        """
+    def search(self, query: str, n_results: int = 4) -> List[Dict[str, Any]]:
+        """Busca os blocos mais relevantes para a dúvida do aluno."""
         results = self.collection.query(
-            query_texts=[query_text],
+            query_texts=[query],
             n_results=n_results
         )
+        
+        formatted_results = []
+        if results['documents'] and results['documents'][0]:
+            for i in range(len(results['documents'][0])):
+                formatted_results.append({
+                    "content": results['documents'][0][i],
+                    "metadata": results['metadatas'][0][i]
+                })
+        return formatted_results
 
-        if results and results['documents']:
-            found_chunks = results['documents'][0]
-            return "\n\n".join(found_chunks)
-        return "Nenhuma informação relevante encontrada no regulamento."
-
-
-vector_db = DocumentStore()
+# Instância global (Singleton) para ser usada na aplicação
+vector_db = ChromaVectorStore()

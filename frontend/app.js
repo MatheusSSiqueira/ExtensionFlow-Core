@@ -1,68 +1,95 @@
 async function validateActivity() {
-    const input = document.getElementById('activityInput').value;
-    const btn = document.getElementById('validateBtn');
-    const loading = document.getElementById('loading');
+    const inputField = document.getElementById('activityInput');
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    const loadingDiv = document.getElementById('loading');
     const resultCard = document.getElementById('resultCard');
-    
-    if (!input.trim()) {
-        alert("Por favor, descreva sua atividade antes de validar.");
+    const activityText = inputField.value.trim();
+
+    if (activityText.length < 10) {
+        alert("Por favor, descreva a atividade com mais detalhes (mínimo 10 caracteres).");
         return;
     }
 
-    // Prepara a UI para o carregamento
-    btn.disabled = true;
-    loading.classList.remove('hidden');
+    // Prepara a tela (Estado de carregamento)
+    inputField.disabled = true;
+    analyzeBtn.disabled = true;
     resultCard.classList.add('hidden');
+    loadingDiv.classList.remove('hidden');
 
     try {
-        // Dispara a requisição para a API FastAPI
         const response = await fetch('/api/v1/compliance/validate', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ activity_description: input })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ activity_description: activityText })
         });
 
         const data = await response.json();
 
-        // Atualiza a Interface com a resposta da IA
-        document.getElementById('statusMessage').innerText = data.status_message;
-        document.getElementById('reasoningText').innerText = data.reasoning;
-        
-        const badge = document.getElementById('statusBadge');
-        if (data.is_compliant) {
-            badge.innerText = "✓ EM CONFORMIDADE";
-            badge.className = "badge success";
-        } else {
-            badge.innerText = "✕ REQUISITOS PENDENTES";
-            badge.className = "badge error";
+        if (!response.ok) {
+            throw new Error(data.detail?.message || "Erro desconhecido no servidor.");
         }
 
-        const missingContainer = document.getElementById('missingItemsContainer');
-        const missingList = document.getElementById('missingItemsList');
-        
-        if (data.missing_requirements.length > 0) {
-            missingList.innerHTML = '';
-            data.missing_requirements.forEach(item => {
-                const li = document.createElement('li');
-                li.innerText = item;
-                missingList.appendChild(li);
-            });
-            missingContainer.classList.remove('hidden');
-        } else {
-            missingContainer.classList.add('hidden');
-        }
-
-        // Exibe o resultado final
-        resultCard.classList.remove('hidden');
+        renderResult(data);
 
     } catch (error) {
-        alert("Erro ao conectar com o servidor. Tente novamente.");
-        console.error(error);
+        alert(`Erro na validação: ${error.message}`);
     } finally {
-        // Restaura o botão
-        btn.disabled = false;
-        loading.classList.add('hidden');
+        // Restaura a tela
+        inputField.disabled = false;
+        analyzeBtn.disabled = false;
+        loadingDiv.classList.add('hidden');
+    }
+}
+
+function renderResult(data) {
+    const resultCard = document.getElementById('resultCard');
+    const badge = document.getElementById('statusBadge');
+    const missingBlock = document.getElementById('missingBlock');
+
+    // Configurar Título e Badge
+    document.getElementById('statusMessage').innerText = data.status_message;
+    
+    badge.innerText = data.status;
+    badge.style.backgroundColor = getStatusColor(data.status);
+
+    // Justificativa
+    document.getElementById('justificationText').innerText = data.justification;
+
+    // Pendências (Só exibe se existirem)
+    if (data.missing_requirements && data.missing_requirements.length > 0) {
+        missingBlock.classList.remove('hidden');
+        populateList('missingList', data.missing_requirements);
+    } else {
+        missingBlock.classList.add('hidden');
+    }
+
+    // 4. Requisitos e Fontes
+    populateList('requirementsList', data.applicable_requirements);
+    populateList('sourcesList', data.sources);
+
+    // Exibe o card
+    resultCard.classList.remove('hidden');
+}
+
+function populateList(elementId, items) {
+    const ul = document.getElementById(elementId);
+    ul.innerHTML = '';
+    if (items && items.length > 0) {
+        items.forEach(item => {
+            const li = document.createElement('li');
+            li.textContent = item;
+            ul.appendChild(li);
+        });
+    } else {
+        ul.innerHTML = '<li>Nenhum item listado.</li>';
+    }
+}
+
+function getStatusColor(status) {
+    switch(status) {
+        case 'conforme': return 'var(--status-conforme)';
+        case 'pendente': return 'var(--status-pendente)';
+        case 'inconsistente': return 'var(--status-inconsistente)';
+        default: return '#666';
     }
 }
