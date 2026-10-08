@@ -1,52 +1,98 @@
 import os
-import chromadb
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
-# Estratégia de Persistência "Baked-in" para o Cloud Run
-DB_DIR = os.path.join(os.getcwd(), "data", "chroma_db")
+import psycopg
+from google import genai
+from google.genai import types
 
-class ChromaVectorStore:
-    def __init__(self, collection_name: str = "extension_rules"):
-        # Garante que o diretório exista
-        os.makedirs(DB_DIR, exist_ok=True)
-        
-        # Inicia o cliente persistente na pasta definida
-        self.client = chromadb.PersistentClient(path=DB_DIR)
-        
-        # Cria ou obtém a coleção 
-        self.collection = self.client.get_or_create_collection(
-            name=collection_name,
-            metadata={"hnsw:space": "cosine"} # Métrica recomendada para similaridade semântica
-        )
 
+EMBEDDING_DIMENSION = 768
+EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001")
+
+
+def _database_url() -> str:
+    database_url = os.environ["DATABASE_URL"]
+    return database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+
+
+def _embedding_client() -> genai.Client:
+    return genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+
+
+def _embed(text: str) -> List[float]:
+    response = _embedding_client().models.embed_content(
+        model=EMBEDDING_MODEL,
+        contents=text,
+        config=types.EmbedContentConfig(output_dimensionality=EMBEDDING_DIMENSION),
+    )
+    return list(response.embeddings[0].values)
+
+
+def _as_pgvector(values: List[float]) -> str:
+    return "[{}]".format(",".join(str(value) for value in values))
+
+
+class PgVectorStore:
     def add_documents(self, chunks: List[str], metadatas: List[Dict[str, Any]], ids: List[str]):
-        """Insere os blocos de texto no banco vetorial."""
+        """Insere blocos e seus embeddings no PostgreSQL com pgvector."""
         if not chunks:
             return
-        
-        # O ChromaDB cuida da criação de embeddings internamente (Default Embedding Function)
-        self.collection.add(
-            documents=chunks,
-            metadatas=metadatas,
-            ids=ids
-        )
-        print(f"[{len(chunks)}] blocos indexados no ChromaDB.")
+
+        rows = []
+        for index, chunk in enumerate(chunks):
+            metadata = metadatas[index] if index < len(metadatas) else {}
+            document_id = metadata.get("document_id", metadata.get("source", ids[index]))
+            tenant_id = metadata.get("tenant_id")
+            rows.append(
+                (
+                    ids[index],
+                    tenant_id,
+                    str(document_id),
+                    chunk,
+                    _as_pgvector(_embed(chunk)),
+                )
+            )
+
+        with psycopg.connect(_database_url()) as connection:
+            with connection.cursor() as cursor:
+                cursor.executemany(
+                    """
+                    INSERT INTO document_embeddings
+                        (id, tenant_id, document_id, chunk_text, embedding)
+                    VALUES (%s, %s, %s, %s, %s::vector)
+                    ON CONFLICT (id) DO NOTHING
+                    """,
+                    rows,
+                )
+
+        print(f"[{len(rows)}] blocos indexados no pgvector.")
 
     def search(self, query: str, n_results: int = 4) -> List[Dict[str, Any]]:
-        """Busca os blocos mais relevantes para a dúvida do aluno."""
-        results = self.collection.query(
-            query_texts=[query],
-            n_results=n_results
-        )
-        
-        formatted_results = []
-        if results['documents'] and results['documents'][0]:
-            for i in range(len(results['documents'][0])):
-                formatted_results.append({
-                    "content": results['documents'][0][i],
-                    "metadata": results['metadatas'][0][i]
-                })
-        return formatted_results
+        """Busca os blocos mais relevantes usando distância cosseno."""
+        query_embedding = _as_pgvector(_embed(query))
 
-# Instância global (Singleton) para ser usada na aplicação
-vector_db = ChromaVectorStore()
+        with psycopg.connect(_database_url()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT document_id, chunk_text
+                    FROM document_embeddings
+                    ORDER BY embedding <=> %s::vector
+                    LIMIT %s
+                    """,
+                    (query_embedding, n_results),
+                )
+                results = cursor.fetchall()
+
+        return [
+            {
+                "content": chunk_text,
+                "metadata": {"source": document_id},
+            }
+            for document_id, chunk_text in results
+        ]
+
+
+# Compatibilidade para código que importava a classe pelo nome antigo.
+ChromaVectorStore = PgVectorStore
+vector_db = PgVectorStore()
