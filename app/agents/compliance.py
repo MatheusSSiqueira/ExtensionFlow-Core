@@ -1,5 +1,9 @@
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.gemini import get_gemini_client, get_default_config
 from app.core.config import settings
+from app.db.models import EvaluationRule
 from app.schemas.domain import ComplianceChecklist, ComplianceRequest
 from app.rag.vector_store import vector_db
 from google.genai.errors import APIError
@@ -7,8 +11,26 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def analyze_compliance(request: ComplianceRequest) -> ComplianceChecklist:
+async def analyze_compliance(
+    request: ComplianceRequest,
+    db: AsyncSession,
+) -> ComplianceChecklist:
     client = get_gemini_client()
+
+    result = await db.execute(
+        select(EvaluationRule)
+        .where(
+            EvaluationRule.activity_id == request.activity_id,
+            EvaluationRule.ativo.is_(True),
+        )
+        .order_by(EvaluationRule.id)
+    )
+    evaluation_rules = result.scalars().all()
+    rules_text = "\n".join(
+        f"- {rule.criterio}: {rule.descricao}" for rule in evaluation_rules
+    )
+    if not rules_text:
+        rules_text = "Nenhuma regra de avaliação ativa foi cadastrada para esta atividade."
     
     # Recuperar contexto do RAG
     search_results = vector_db.search(request.activity_description, n_results=5)
@@ -35,11 +57,13 @@ def analyze_compliance(request: ComplianceRequest) -> ComplianceChecklist:
     prompt = f"""
 INSTRUÇÕES DO SISTEMA:
 Você é um assistente acadêmico rigoroso da Unicesumar responsável por auditar atividades de extensão.
-Sua tarefa é cruzar a descrição da atividade do aluno com as regras dos documentos recuperados.
+Sua tarefa é cruzar a descrição da atividade do aluno com as regras de avaliação e os documentos recuperados.
 - NUNCA invente regras, datas ou documentos.
-- NUNCA assuma conformidade se faltar uma evidência exigida na regra (Ex: Ficha de frequência, imagens, termos).
-- Baseie-se EXCLUSIVAMENTE nos documentos fornecidos em [DOCUMENTOS RECUPERADOS].
-- Se a atividade não estiver em conformidade, liste exatamente o que falta em 'missing_requirements'.
+- Baseie sua análise exclusivamente nas regras e documentos fornecidos.
+- Se a atividade não estiver em conformidade com uma regra, liste exatamente o que falta em 'missing_requirements'.
+
+[REGRAS DE AVALIAÇÃO]
+{rules_text}
 
 [DOCUMENTOS RECUPERADOS]
 {context_text}

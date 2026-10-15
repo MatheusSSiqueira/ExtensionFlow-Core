@@ -1,9 +1,37 @@
 import os
+import tempfile
+from pathlib import Path
+
 from app.rag.loaders import extract_document_text
 from app.rag.splitter import split_text_with_metadata
 from app.rag.vector_store import vector_db
 
 RAW_DOCS_DIR = os.path.join(os.getcwd(), "data", "raw_docs")
+
+
+def ingest_uploaded_document(
+    content: bytes,
+    filename: str,
+    document_id: str,
+    tenant_id: str,
+) -> None:
+    """Extrai e indexa um documento enviado por um aluno."""
+    suffix = Path(filename).suffix
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=True) as temporary_file:
+        temporary_file.write(content)
+        temporary_file.flush()
+        text_content = extract_document_text(temporary_file.name)
+
+    if not text_content:
+        raise ValueError("Não foi possível extrair texto do arquivo enviado.")
+
+    chunks, metadatas, ids = split_text_with_metadata(text_content, filename)
+    for metadata in metadatas:
+        metadata["document_id"] = document_id
+        metadata["tenant_id"] = tenant_id
+
+    vector_db.add_documents(chunks, metadatas, ids)
+
 
 def build_vector_database():
     """Varrer diretório de dados brutos recursivamente e ingerir todos os documentos suportados."""

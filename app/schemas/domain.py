@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import List, Literal
+from uuid import UUID
 
 class ComplianceChecklist(BaseModel):
     is_compliant: bool = Field(..., description="Verdadeiro apenas se a atividade atende a todos os requisitos sem pendências.")
@@ -11,4 +12,5 @@ class ComplianceChecklist(BaseModel):
     status_message: str = Field(..., description="Mensagem curta de status que será exibida como título no frontend.")
 
 class ComplianceRequest(BaseModel):
+    activity_id: UUID = Field(..., description="Identificador da atividade a ser avaliada.")
     activity_description: str = Field(..., min_length=10, description="Descrição da atividade e dos documentos apresentados pelo aluno.")

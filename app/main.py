@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from app.api.compliance import router as compliance_router
 from app.api.auth import router as auth_router
+from app.api.documents import router as documents_router
 from app.core.config import settings
 
 app = FastAPI(
@@ -24,6 +25,7 @@ app.add_middleware(
 # Inclui os endpoints do agente
 app.include_router(compliance_router, prefix="/api/v1/compliance", tags=["Compliance"])
 app.include_router(auth_router, tags=["Authentication"])
+app.include_router(documents_router, tags=["Documents"])
 
 # Rota para Health Check (Essencial para Kubernetes/Cloud Run)
 @app.get("/health", tags=["System"])
